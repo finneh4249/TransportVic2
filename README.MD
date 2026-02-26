@@ -1,12 +1,88 @@
 # [TransportVic2](https://transportvic.me)
+
+![License](https://img.shields.io/badge/license-ISC-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.0-green.svg)
+
 Hi! This is a complete rewrite of TransportVic, now that I've lived in Melbourne for a longer time and actually know the system through.
 
-## TODO:
-- Fix day of week getter:
-  - Use victorianholidays.ics file, on each holiday look at stony point timetable and count services on that day STY - FKN
-    - Weekday 10, Friday 12
-    - Saturday 8
-    - Sunday 7
+TransportVic2 is a comprehensive public transport tracker, timetable viewer, and journey planner for Victoria, Australia. It aggregates massive static GTFS drops with real-time API feeds to provide accurate departure boards and journey planning across all modes of public transport.
+
+## Documentation
+
+To better understand how TransportVic2 works under the hood and how to contribute, please refer to the following documentation:
+
+- **[Architecture (ARCHITECTURE.md)](ARCHITECTURE.md)**: Details the system's structure, data flow, and core concepts like stop merging and offline mode.
+- **[Contributing (CONTRIBUTING.md)](CONTRIBUTING.md)**: Outlines the development workflow, GitHub Flow methodology, EPOCH SemVer rules, and local setup instructions.
+
+---
+
+## Setting up
+
+* Standard `npm i`
+* Create a `config.json` looking like:
+
+```json
+{
+  "useHTTPS": false, // tells the server if you want to use the HTTPS server (runs on port 443)
+  "sslCertPath": "", // where to find the SSL certs for HTTPS. Ignored if useHTTPS is false
+  "httpPort": 8000, // The port to run the HTTP server on. Acts only as a redirect server if userHTTPS is true
+  "databaseURL": "mongodb://localhost:27017", // MongoDB database URL. This should work fine
+  "databaseName": "TransportVic", // MongoDB database name
+  "webrootPath": "", // Location of the let's encrypt webroot
+  "useLetsEncrypt": false, // Whether to use let's encrypt to automatically renew certs
+  "certbotFlags": "", // Any extra flags to pass to the certbot renew call. For example using dns challenge
+
+  "ptvKeys": [{
+    "key": "", // Your PTV dev key.
+    "devID": "" // Your PTV dev id. If left blank PTV api calls will not work and will fallback to gtfs timetable. This makes data less accurate
+  }],
+
+  "devMode": true // Enables/Disables compression of data and other stuff
+}
+```
+
+* Create a `modules.json` to enable/disable specific modules:
+
+```json
+{
+  "Next4": {
+    "bus": true,
+    "tram": true,
+    "metro": true,
+    "vline": true,
+    "coach": true,
+    "ferry": true
+  },
+  "tracker": {
+    "bus": true,
+    "vline": true
+  },
+  "mockups": {
+    "pidsview": true
+  },
+  "routes": {
+    "bus": true
+  },
+  "stopPreview": true,
+  "jmssScreen": true,
+  "vlineMail": true
+}
+```
+*The example above has everything enabled. Keep in mind that GTFS loading is controlled by the `Next4` entry.*
+
+* You'll have to download additional spatial data from Spatial Datamart Victoria and save it to `/spatial-datamart`.
+  * These typically come as an Esri shapefile. I used `shp2json` to generate `geojson`.
+  * Required files include: `metro-bus-route`, `metro-bus-stops`, `metro-train-stations`, `metro-tram-stops`, `night-bus-route`, `night-bus-stops`, `regional-bus-route`, `regional-bus-stops`, `regional-coach-routes`, `regional-coach-stops`, `skybus-route`, `skybus-stops`, `train-stations`, `vline-train-stations`.
+* Run `modules/optimise-svg.js` to run through all the raw svg files and remove unneeded fields from them.
+* Run `update-gtfs.sh` to pull the latest GTFS data from PTV.
+* Run `node load-gtfs/metro-trains/extra/download-metro-timetables.js` and the v/line counterpart (do this just once unless the NSP/WTTs get updated).
+* Create a blank `load-gtfs/stats.json`.
+* Run `load-gtfs/load-all.sh` to load it all into the database (takes around 20min).
+* You'll need to populate `urls.json` with magic values.
+
+You should be good to go!
+
+---
 
 ## Current mapping projects:
 - Smartrak ID mapping
@@ -16,26 +92,12 @@ Hi! This is a complete rewrite of TransportVic, now that I've lived in Melbourne
 - Bus desto mapping
 
 ## New GTFS Loader:
-- Ferry:
-  - Unused GTFS ID 9
-  - Reads timetable from https://www.ptv.vic.gov.au/more/travelling-on-the-network/ferries/
-- Bus:
-  - Loads standard GTFS components
-  - Loads 788 stop numbers
-  - Loads clockwise/anticlockwise loop directions
-  - Includes operators and myki zones
-  - Has all modes: metro bus, regional bus, telebus, nightbus, skybus
-- Metro trains:
-  - Loads standard GTFS components
-  - Loads static WTT dump from metro website
-  - Regional Coach:
-    - Loads standard GTFS components
-  - Trams
-    - Loads standard GTFS components
-    - Loads TramTracker IDs on a stop-level
-  - V/Line Trains:
-    - Loads standard GTFS components
-    - Loads NSP static timetable dump
+- Ferry: Unused GTFS ID 9 (Reads timetable from PTV site)
+- Bus: Loads standard GTFS components, 788 stop numbers, loop directions, operators, myki zones.
+- Metro trains: Loads standard GTFS components, static WTT dump from metro website.
+- Regional Coach: Loads standard GTFS components.
+- Trams: Loads standard GTFS components, TramTracker IDs on a stop-level.
+- V/Line Trains: Loads standard GTFS components, NSP static timetable dump.
 
 ## Current features:
 - Loading in MTM timetables
@@ -70,12 +132,11 @@ Hi! This is a complete rewrite of TransportVic, now that I've lived in Melbourne
     - Text format
   - Southern Cross platform displays
   - LED PIDS display found at suburban stations like Pakenham, Lilydale and Croydon
-
 - GeoJSON visualiser, cos why not
-- Checks disruptions whenever requesting for metro train departures - looks for suspended regions and adds a message / marks `isRailReplacementBus` (need to rename to `isBusReplacement`)
+- Checks disruptions whenever requesting for metro train departures - looks for suspended regions and adds a message / marks `isBusReplacement`
 - Stop merging in place
-  - Roads do not get merged, see commit [0c3cf46](https://github.com/TransportVic/TransportVic2/commit/0c3cf45222eb2d94bc1e26cc6a95b862218a441f)
-  - Looks for stops with the same primary stop name: Primary Stop Name/Road Name (Suburb)
+  - Roads do not get merged.
+  - Looks for stops with the same primary stop name.
   - If the primary stop name matches and the 2 stops are within a set distance, varying for stop types, they are merged.
   - When requesting stop timing data, the "bays" are filtered by mode, then grouped by originalName
     - If online, the first stopGTFSID is taken from each group, and sent to PTV's server
@@ -110,119 +171,22 @@ Hi! This is a complete rewrite of TransportVic, now that I've lived in Melbourne
   - attempts to find best match
   - enter run id (metro is +948000, 988000 for alphabetical prefixed runs)
 - Icons for the various stopping pattern pages
-  - Completed:
-    - EDI Comeng (PTV) (Used for both types)
-    - X'Traps (PTV)
-    - Siemens (PTV)
-    - N Locomotive (Mark 3)
-    - Sprinter (Mark 3)
-    - Velocity (PTV)
-    - Volgren CR228L (PTV/White)
-    - Volgren Optimus (PTV/White)
-    - HCMT (PTV)
-    - Optare Solo (PTV/White)
-  - To Do:
-    - Coach, need to find a suitable one for drawing
-    - Trams (possibly do sideways rather than front?)
-      - A1/2
-      - B2 (looks the same as A1/2, which is why side)
-      - C1
-      - C2
-      - D1
-      - D2
-      - E1/2
-      - W8
-      - Z3
-  - Thoughts:
-    - Trams will use a simple lookup from the tram number to get the model
-    - Buses use smartrak ids
+  - To Do: Coach, Trams
 - Fare calculator thingy (now a ptv api thing)
 - Interstate
   - overland apparently
 - If disruption thing isn't implemented do a status board
 - Maps (openstreetmap looks good)
 - Weather if I can find a way to do it freely
-  - bom: use ftp://ftp.bom.gov.au/anon/gen/fwo/IDV10753.xml
-  - get nearest weather station, I HAD A LIST SOMEWHERE WITH COORDINATES TO SOMETHING LIKE 5DP |:<
-  - ftp://ftp.bom.gov.au/anon/home/adfd/spatial
-  - from nearest weather station use that list to check
 - day mode
 - SCS arrivals
 - Timetable search
 - myki manager if it's safe
   - store login info on client side?
 
-## Setting up
-* Standard `npm i -d`
-* Create a config.json looking like
-```
-{
-  "useHTTPS": false, // tells the server if you want to use the HTTPS server (runs on port 443)
-  "sslCertPath": "", // where to find the SSL certs for HTTPS. Ignored if useHTTPS is false
-  "httpPort": 8000, // The port to run the HTTP server on. Acts only as a redirect server if userHTTPS is true
-  "databaseURL": "mongodb://localhost:27017", // MongoDB database URL. This should work fine
-  "databaseName": "TransportVic", // MongoDB database name
-  "webrootPath": "", // Location of the let's encrypt webroot
-  "useLetsEncrypt": false, // Whether to use let's encrypt to automatically renew certs
-  "certbotFlags": "", // Any extra flags to pass to the certbot renew call. For example using dns challenge
-
-  "ptvKeys": [{
-    "key": "", // Your PTV dev key.
-    "devID": "" // Your PTV dev id. If left blank PTV api calls will not work and will fallback to gtfs timetable. This makes data less accurate
-  }],
-
-  "devMode": true // Enables/Disables compression of data and other stuff
-}
-```
-with the appropriate fields filled
-Create a modules.json with this filled
-```
-{
-  "Next4": {
-    "bus": true,
-    "tram": true,
-    "metro": true,
-    "vline": true,
-    "coach": true,
-    "ferry": true
-  },
-  "tracker": {
-    "bus": true,
-    "vline": true
-  },
-  "mockups": {
-    "pidsview": true
-  },
-  "routes": {
-    "bus": true
-  },
-  "stopPreview": true,
-  "jmssScreen": true,
-  "vlineMail": true
-}
-```
-And enable the modules you want. The example here has everything enabled. Keep in mind that GTFS loading is controlled by the Next4 entry, and that other modules such as trackers or routes do not check that the relevant module is enabled as well.
-
-* You'll have to download additional data from Spatial Datamart Victoria and save it to `/spatial-datamart`
-  * These typically come as a Esri shapefile, I used `shp2json` to generate geojson
-  * metro-bus-route
-  * metro-bus-stops
-  * metro-train-stations
-  * metro-tram-stops
-  * night-bus-route
-  * night-bus-stops
-  * regional-bus-route
-  * regional-bus-stops
-  * regional-coach-routes
-  * regional-coach-stops
-  * skybus-route
-  * skybus-stops
-  * train-stations
-  * vline-train-stations
-* Run `modules/optimise-svg.js` to run through all the raw svg files and remove unneeded fields from them
-* Run `update-gtfs.sh` to pull the latest GTFS data from PTV
-* Run `node load-gtfs/metro-trains/extra/download-metro-timetables.js` and the v/line counterpart (do this just once unless the NSP/WTTs get updated)
-* Create a blank `load-gtfs/stats.json`. (I'll make this automatic)
-* Run `load-gtfs/load-all.sh` to load it all into the database (takes around 20min)
-* You'll need to populate `urls.json` with magic values (sorry I can't help you with that unless maybe I know you or something. but eh it mostly runs fine without that file and can fallback to offline mode without it)
-* You should be good to go!
+## TODO:
+- Fix day of week getter:
+  - Use victorianholidays.ics file, on each holiday look at stony point timetable and count services on that day STY - FKN
+    - Weekday 10, Friday 12
+    - Saturday 8
+    - Sunday 7

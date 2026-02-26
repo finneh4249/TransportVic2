@@ -6,6 +6,12 @@ import _loggers from './init-loggers.mjs'
 import config from './config.json' with { type: 'json' }
 import MainServer from './server/MainServer.mjs'
 
+/**
+ * Main application entry point for TransportVic2.
+ * Initializes the environment, logging, connects to MongoDB,
+ * configures the Express server routing, and starts listening for HTTP requests.
+ */
+
 let mainServer = new MainServer()
 await mainServer.connectToDatabase()
 
