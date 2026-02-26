@@ -29,13 +29,37 @@ export default class MainServer {
   }
 
   async connectToDatabase() {
-    this.database = new MongoDatabaseConnection(config.databaseURL, config.databaseName)
-    this.tripDatabase = new MongoDatabaseConnection(config.tripDatabaseURL, config.databaseName)
-    // this.database.enableDebugging(o => console.log(o))
-    // this.database.enableDebugging((o, _, s) => !utils.inspect(o) && console.log(s))
+    if (process.env.OFFLINE_MODE) {
+      global.loggers.general.info('Starting in OFFLINE_MODE. Database connections are disabled.')
+      const cursorMock = {
+        toArray: async () => ([]),
+        limit: function() { return this },
+        sort: function() { return this },
+        skip: function() { return this }
+      }
+      const dbMock = {
+        getCollection: () => ({
+          findDocuments: () => cursorMock,
+          findDocument: async () => null,
+          distinct: async () => ([]),
+          countDocuments: async () => 0,
+          createIndex: async () => {},
+          deleteDocuments: async () => {},
+          insertDocument: async () => {},
+          insertDocuments: async () => {},
+          updateDocument: async () => {},
+        }),
+        connect: async () => {}
+      }
+      this.database = dbMock
+      this.tripDatabase = dbMock
+    } else {
+      this.database = new MongoDatabaseConnection(config.databaseURL, config.databaseName)
+      this.tripDatabase = new MongoDatabaseConnection(config.tripDatabaseURL, config.databaseName)
 
-    await this.database.connect({})
-    await this.tripDatabase.connect({})
+      await this.database.connect({})
+      await this.tripDatabase.connect({})
+    }
 
     this.app.use((req, res, next) => {
       res.db = this.database

@@ -5,4 +5,4 @@ export default Object.keys(bays).reduce((acc, stopGTFSID) => ({
   ...(bays[stopGTFSID].length ? {
     [stopGTFSID]: `Bay ${bays[stopGTFSID]}`
   }: {})
-}))
+}), {})
